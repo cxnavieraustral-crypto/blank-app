@@ -1,1 +1,140 @@
-* @streamlit/community-cloud
+import streamlit as st
+import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Naviera Austral - Auditoría Cloud", page_icon="☁️", layout="wide")
+
+# NOMBRE EXACTO DE TU HOJA DE GOOGLE (Cámbialo aquí)
+NOMBRE_HOJA_GOOGLE = "Base_Datos_Auditoria" 
+
+# --- CONEXIÓN A GOOGLE SHEETS ---
+def conectar_google_sheet():
+    # Definir alcance de permisos
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    
+    try:
+        # Busca el archivo credentials.json que subiste a Replit
+        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+        client = gspread.authorize(creds)
+        # Abre la hoja de cálculo
+        sheet = client.open(NOMBRE_HOJA_GOOGLE).sheet1
+        return sheet
+    except Exception as e:
+        st.error(f"Error al conectar con Google: {e}")
+        return None
+
+# --- FUNCIONES DE DATOS ---
+def guardar_en_nube(data_lista):
+    sheet = conectar_google_sheet()
+    if sheet:
+        sheet.append_row(data_lista)
+
+def leer_de_nube():
+    sheet = conectar_google_sheet()
+    if sheet:
+        # Obtiene todos los registros y los convierte en DataFrame
+        data = sheet.get_all_records()
+        return pd.DataFrame(data)
+    return pd.DataFrame()
+
+# --- LISTAS DE DATOS ---
+AGENCIAS = [
+    "Puerto Montt", "Chaitén", "Quellón", 
+    "Puerto Cisnes", "Chacabuco", "Coyhaique", 
+    "Sitio Web", "Call Center"
+]
+AUDITORES = ["Residente", "Turista", "Adulto Mayor", "Auditor Técnico"]
+CRITICIDAD_OPCIONES = {
+    "Deseable (20%)": {"peso": 0.20, "tipo": "Deseable"},
+    "Importante (30%)": {"peso": 0.30, "tipo": "Importante"},
+    "CRÍTICO (50%)": {"peso": 0.50, "tipo": "CRÍTICO"}
+}
+
+# --- INTERFAZ GRÁFICA ---
+st.title("☁️ Auditoría Naviera Austral - Conexión Cloud")
+st.markdown("---")
+
+menu = st.sidebar.radio("Menú", ["📝 Nueva Auditoría", "📊 Dashboard en Vivo"])
+
+if menu == "📝 Nueva Auditoría":
+    st.header("Ingreso de Hallazgo")
+    
+    with st.form("form_auditoria"):
+        col1, col2 = st.columns(2)
+        with col1:
+            agencia = st.selectbox("Punto de Contacto", AGENCIAS)
+            auditor = st.selectbox("Personaje", AUDITORES)
+            categoria = st.text_input("Categoría", placeholder="Ej: Seguridad")
+        with col2:
+            fecha = st.date_input("Fecha", datetime.now())
+            hora = st.time_input("Hora", datetime.now())
+            pregunta = st.text_input("Ítem Evaluado")
+        
+        st.markdown("---")
+        criterio_sel = st.selectbox("Nivel de Criticidad", list(CRITICIDAD_OPCIONES.keys()))
+        info_crit = CRITICIDAD_OPCIONES[criterio_sel]
+        
+        nota = st.slider("Nota (1-5)", 1, 5, 3)
+        observaciones = st.text_area("Observaciones")
+        
+        submitted = st.form_submit_button("🚀 Enviar a Google Sheets")
+        
+        if submitted:
+            # Lógica de Estado
+            peso = info_crit["peso"]
+            tipo_crit = info_crit["tipo"]
+            res_pond = nota * peso
+            
+            if tipo_crit == "CRÍTICO" and nota < 5:
+                estado = "FALLA CRÍTICA"
+            elif nota >= 4:
+                estado = "APROBADO"
+            else:
+                estado = "REPROBADO"
+            
+            # Preparar lista para Google (todo debe ser string o numero simple)
+            fila_para_google = [
+                str(fecha), str(hora), agencia, auditor, categoria, 
+                pregunta, tipo_crit, nota, res_pond, estado, observaciones
+            ]
+            
+            with st.spinner("Conectando con la nube..."):
+                guardar_en_nube(fila_para_google)
+                st.success(f"¡Guardado en Drive! Estado: {estado}")
+
+elif menu == "📊 Dashboard en Vivo":
+    st.header("Resultados en Tiempo Real")
+    
+    if st.button("🔄 Actualizar Datos"):
+        st.cache_data.clear() # Limpia caché para forzar recarga
+    
+    with st.spinner("Descargando datos de Google..."):
+        df = leer_de_nube()
+    
+    if not df.empty:
+        # Métricas
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Registros", len(df))
+        c2.metric("Promedio General", f"{df['Nota'].mean():.2f}")
+        criticos = len(df[df['Estado'] == 'FALLA CRÍTICA'])
+        c3.metric("Fallas Críticas", criticos)
+        
+        # Colores para la tabla
+        def colorear(val):
+            if val == 'FALLA CRÍTICA': return 'background-color: #ffcccc'
+            if val == 'APROBADO': return 'background-color: #ccffcc'
+            if val == 'REPROBADO': return 'background-color: #ffffcc'
+            return ''
+
+        st.dataframe(df.style.applymap(colorear, subset=['Estado']), use_container_width=True)
+    else:
+        st.warning("No se encontraron datos o la hoja está vacía.")
+        
