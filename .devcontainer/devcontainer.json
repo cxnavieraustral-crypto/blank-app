@@ -1,3 +1,38 @@
+# --- PEGA ESTO EN TU main.py EN GITHUB ---
+import streamlit as st
+import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Naviera Austral - Auditoría Cloud", page_icon="☁️", layout="wide")
+
+# NOMBRE EXACTO DE TU HOJA DE GOOGLE
+NOMBRE_HOJA_GOOGLE = "Base_Datos_Auditoria" 
+
+# --- CONEXIÓN A GOOGLE SHEETS (MODIFICADA PARA NUBE) ---
+def conectar_google_sheet():
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    
+    try:
+        # AQUÍ ESTÁ EL CAMBIO: Lee desde los "Secretos" de Streamlit, no de un archivo
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+        sheet = client.open(NOMBRE_HOJA_GOOGLE).sheet1
+        return sheet
+    except Exception as e:
+        st.error(f"Error al conectar con Google: {e}")
+        return None
+
+# ... (EL RESTO DEL CÓDIGO SIGUE IGUAL DESDE AQUÍ HACIA ABAJO: FUNCIONES DE DATOS, LISTAS, ETC.) ...
+# ... Copia y pega el resto del código que te di anteriormente a partir de "def guardar_en_nube..." ...
 {
   "name": "Python 3",
   // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
